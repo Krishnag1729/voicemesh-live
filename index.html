@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="voicemesh-server" content="wss://ascension-uncouth-turkey.ngrok-free.dev">
+<title>VoiceMesh Live</title>
+<style>
+:root {
+  --bg: #f6f5f1; --card: #ffffff; --ink: #1c1c1a; --muted: #6b6a64; --line: #e3e1da;
+  --accent: #c2410c; --accent-ink: #ffffff; --ok: #15803d; --warn: #b45309; --err: #b91c1c;
+  --hi: #1e3a8a;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #151514; --card: #1f1f1d; --ink: #ecebe6; --muted: #a09e96; --line: #33322e;
+    --accent: #fb923c; --accent-ink: #1c1c1a; --ok: #4ade80; --warn: #fbbf24; --err: #f87171;
+    --hi: #bfdbfe; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 28px 16px 48px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 1.6rem; margin: 0; letter-spacing: -0.01em; }
+h1 span { color: var(--accent); }
+.lede { color: var(--muted); margin: 6px 0 22px; }
+.pill { font-size: .85rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--card); white-space: nowrap; }
+.pill::before { content: "●"; margin-right: 6px; color: var(--muted); }
+.pill[data-s="ok"]::before { color: var(--ok); }
+.pill[data-s="live"]::before { color: var(--accent); }
+.pill[data-s="warn"]::before { color: var(--warn); }
+.pill[data-s="err"]::before { color: var(--err); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+.card h2 { font-size: 1rem; margin: 0 0 10px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+button { font: inherit; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+  color: var(--ink); padding: 9px 14px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.stop { border-color: var(--err); color: var(--err); }
+label.chk { color: var(--muted); font-size: .9rem; display: flex; gap: 6px; align-items: center; }
+.samples { display: grid; gap: 8px; margin-top: 4px; }
+.samples button { text-align: left; width: 100%; }
+.samples small { display: block; color: var(--muted); }
+.meter { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; flex: 1; min-width: 120px; }
+.meter i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .08s; }
+#log { display: grid; gap: 10px; }
+.clause { border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; }
+.clause .en { color: var(--muted); font-size: .92rem; }
+.clause .hi { color: var(--hi); font-size: 1.25rem; font-family: "Noto Sans Devanagari", "Nirmala UI", "Mangal", sans-serif; }
+.empty { color: var(--muted); font-size: .92rem; }
+.pipe { font-size: .9rem; color: var(--muted); }
+.pipe b { color: var(--ink); font-weight: 600; }
+footer { color: var(--muted); font-size: .82rem; margin-top: 22px; }
+footer p { margin: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>VoiceMesh <span>Live</span></h1>
+    <div class="pill" id="pill" data-s="">checking server…</div>
+  </header>
+  <p class="lede">Speak English, hear Hindi. Your audio streams to a GPU server that recognises
+    the speech, translates each clause and speaks it back in Hindi, live.</p>
+
+  <section class="card">
+    <h2>1 · Try a sample (no microphone needed)</h2>
+    <div class="samples" id="samples"></div>
+  </section>
+
+  <section class="card">
+    <h2>2 · Use your microphone</h2>
+    <div class="row">
+      <button class="primary" id="micBtn">Start microphone</button>
+      <button class="stop" id="stopBtn" disabled>Stop</button>
+      <div class="meter" aria-hidden="true"><i id="lvl"></i></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="chk"><input type="checkbox" id="phones"> I'm wearing headphones
+        (otherwise the mic pauses while Hindi plays, to avoid echo)</label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Translation</h2>
+    <div id="log"><p class="empty" id="empty">Clauses appear here as they are translated.
+      Pause briefly at the end of a sentence.</p></div>
+  </section>
+
+  <section class="card pipe">
+    <h2>How it works</h2>
+    <p><b>Browser</b> (16 kHz audio) → <b>gateway</b> (auth, admission control, sticky routing,
+      replay buffer) → <b>worker on an RTX 3050</b>: streaming FastConformer ASR → clause
+      segmenter → IndicTrans2 English→Hindi → Piper Hindi TTS → Opus back to you.
+      The same back end serves the VoiceMesh Android app.</p>
+  </section>
+
+  <footer>
+    <p>Research demo for a course project. Adults only. Audio is processed live and never stored;
+      server logs hold counters only, no text or audio. Hindi voice is for non-commercial research use.</p>
+    <p>Sample clips: LibriSpeech test-clean (CC BY 4.0).</p>
+  </footer>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const pill = $("pill"), micBtn = $("micBtn"), stopBtn = $("stopBtn"), lvl = $("lvl");
+let ctx, ws, node, mic, srcNode, playHead = 0, muteTimer, busy = false;
+
+function status(text, s) { pill.textContent = text; pill.dataset.s = s; }
+
+// Same origin by default; a copy hosted elsewhere names the server in <meta name="voicemesh-server">.
+const SERVER = document.querySelector('meta[name="voicemesh-server"]')?.content ||
+  (location.protocol === "https:" ? "wss://" : "ws://") + location.host +
+  location.pathname.replace(/[^/]*$/, "");
+const wsUrl = (path) => SERVER.replace(/\/?$/, "/") + path;
+
+function health() {
+  const w = new WebSocket(wsUrl("ping"));
+  const t = setTimeout(() => { w.close(); if (!busy) status("server unreachable", "err"); }, 8000);
+  w.onmessage = () => { clearTimeout(t); w.close(); if (!busy) status("server ready", "ok"); };
+  w.onerror = () => { clearTimeout(t); if (!busy) status("server unreachable", "err"); };
+}
+
+function setBusy(b) {
+  busy = b;
+  micBtn.disabled = b;
+  stopBtn.disabled = !b;
+  document.querySelectorAll(".samples button").forEach((x) => (x.disabled = b));
+}
+
+function addClause(en, hi) {
+  $("empty")?.remove();
+  const d = document.createElement("div");
+  d.className = "clause";
+  d.innerHTML = '<div class="en"></div><div class="hi" lang="hi"></div>';
+  d.querySelector(".en").textContent = en;
+  d.querySelector(".hi").textContent = hi;
+  $("log").prepend(d);
+}
+
+function play(buf) {
+  const pcm = new Int16Array(buf);
+  if (!ctx || !pcm.length) return;
+  const ab = ctx.createBuffer(1, pcm.length, 16000);
+  const ch = ab.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+  const s = ctx.createBufferSource();
+  s.buffer = ab;
+  s.connect(ctx.destination);
+  playHead = Math.max(playHead, ctx.currentTime + 0.05);
+  s.start(playHead);
+  playHead += ab.duration;
+  if (mic && !$("phones").checked) {   // half duplex: pause the mic until Hindi ends
+    node.port.postMessage({ mute: true });
+    clearTimeout(muteTimer);
+    muteTimer = setTimeout(() => node.port.postMessage({ mute: false }),
+      (playHead - ctx.currentTime + 0.4) * 1000);
+  }
+}
+
+async function open() {
+  ctx = new AudioContext();
+  await ctx.audioWorklet.addModule("capture.js");
+  node = new AudioWorkletNode(ctx, "capture");
+  const sink = ctx.createGain(); sink.gain.value = 0;
+  node.connect(sink).connect(ctx.destination);
+  ws = new WebSocket(wsUrl("ws"));
+  ws.binaryType = "arraybuffer";
+  await new Promise((ok, fail) => {
+    ws.onmessage = (e) => {
+      if (typeof e.data !== "string") return play(e.data);
+      const m = JSON.parse(e.data);
+      if (m.type === "ready") ok();
+      else if (m.type === "text") addClause(m.en, m.hi);
+      else if (m.type === "error") { fail(new Error(m.reason)); stop("server: " + m.reason, "err"); }
+    };
+    ws.onclose = () => { fail(new Error("closed")); if (busy) stop("disconnected", "err"); };
+  });
+  node.port.onmessage = (e) => {
+    if (ws.readyState === 1) ws.send(e.data);
+    const a = new Int16Array(e.data); let p = 0;
+    for (let i = 0; i < a.length; i += 8) p = Math.max(p, Math.abs(a[i]));
+    lvl.style.width = Math.min(100, (p / 32768) * 160) + "%";
+  };
+}
+
+async function start(kind, sample) {
+  setBusy(true);
+  status("connecting…", "warn");
+  try {
+    await open();
+    if (kind === "mic") {
+      mic = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+      srcNode = ctx.createMediaStreamSource(mic);
+      srcNode.connect(node);
+      status("live: speak English", "live");
+    } else {
+      const wav = await (await fetch(sample.file)).arrayBuffer();
+      const ab = await ctx.decodeAudioData(wav);
+      srcNode = ctx.createBufferSource();
+      srcNode.buffer = ab;
+      const g = ctx.createGain(); g.gain.value = 0.5;   // hear the English quietly
+      srcNode.connect(node);
+      srcNode.connect(g).connect(ctx.destination);
+      srcNode.start();
+      status("playing sample…", "live");
+      srcNode.onended = () => {          // keep the session up for the last clause
+        status("translating the end…", "live");
+        setTimeout(() => busy && stop("server ready", "ok"), 6000 + Math.max(0, playHead - ctx.currentTime) * 1000);
+      };
+    }
+  } catch (e) {
+    const why = e.name === "NotAllowedError" ? "microphone blocked" : (e.message || "failed");
+    stop(why, "err");
+  }
+}
+
+function stop(text = "server ready", s = "ok") {
+  if (!busy) return;
+  setBusy(false);
+  mic?.getTracks().forEach((t) => t.stop());
+  mic = null;
+  try { srcNode?.disconnect(); } catch {}
+  if (ws && ws.readyState <= 1) ws.close();
+  const c = ctx; ctx = null;
+  setTimeout(() => c?.close(), Math.max(0, (playHead - (c?.currentTime ?? 0))) * 1000 + 200);
+  playHead = 0;
+  lvl.style.width = "0";
+  status(text, s);
+}
+
+micBtn.onclick = () => start("mic");
+stopBtn.onclick = () => stop();
+fetch("samples/samples.json").then((r) => r.json()).then((list) => {
+  for (const s of list) {
+    const b = document.createElement("button");
+    b.innerHTML = "▶ <span></span><small></small>";
+    b.querySelector("span").textContent = "“" + s.text + "”";
+    b.querySelector("small").textContent = "LibriSpeech " + s.id;
+    b.onclick = () => start("sample", s);
+    $("samples").append(b);
+  }
+});
+if (!window.isSecureContext) status("open over https to use the mic", "warn");
+health(); setInterval(health, 30000);
+</script>
+</body>
+</html>
