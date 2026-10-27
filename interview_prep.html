@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VoiceMesh Interview Prep</title>
+<meta name="description" content="Interview preparation for VoiceMesh: the pitch, the architecture, the design decisions and why, the measured numbers, likely questions with short answers, and known limits.">
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1c1c1a;--muted:#6b6a64;--line:#e3e1da;--accent:#c2410c;--code:#f0eee8}
+@media (prefers-color-scheme:dark){:root{--bg:#151514;--card:#1f1f1d;--ink:#ecebe6;--muted:#a09e96;--line:#33322e;--accent:#fb923c;--code:#191918}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Noto Sans Devanagari",sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:28px 16px 56px}
+a{color:var(--accent)}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+h1{font-size:1.7rem;margin:0;letter-spacing:-.01em}
+h2{font-size:1.25rem;margin:32px 0 10px;scroll-margin-top:12px}
+h3{font-size:1.05rem;margin:22px 0 6px;scroll-margin-top:12px}
+.tag{font-size:.8rem;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:2px 9px;vertical-align:middle}
+.muted{color:var(--muted)}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 12px;text-decoration:none;white-space:nowrap;color:var(--ink)}
+.btn:hover{border-color:var(--accent)}
+code{background:var(--code);border-radius:4px;padding:1px 5px;font:.88em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.toc{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 4px}
+.toc a{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 11px;font-size:14px;text-decoration:none;color:var(--ink)}
+.toc a:hover{border-color:var(--accent)}
+.pitch{background:var(--card);border-left:4px solid var(--accent);border-radius:0 12px 12px 0;padding:12px 16px;font-size:17px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{text-align:left;vertical-align:top;padding:8px 12px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.qa details{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:8px 0}
+.qa summary{cursor:pointer;font-weight:600}
+.qa details[open] summary{margin-bottom:6px}
+.qa p{margin:6px 0 0}
+ol.flow li,ul.tight li{margin:4px 0}
+footer{margin-top:40px;color:var(--muted);font-size:14px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div><h1>VoiceMesh <span class="tag">interview prep</span></h1>
+    <p class="muted">What to say about VoiceMesh, live English → Hindi speech translation for low-end Android phones, and the
+      questions to expect. Every number was measured in the project and comes from <code>results/*.csv</code> through the
+      generated report. Milestones are M0–M21.</p></div>
+  <a class="btn" href="index.html">Try it live</a>
+</header>
+<nav class="toc">
+  <a href="#pitch">Pitch</a><a href="#arch">Architecture</a><a href="#decisions">Decisions</a><a href="#numbers">Numbers</a>
+  <a href="#q-latency">Latency</a><a href="#q-gpu">GPU &amp; scale</a><a href="#q-phone">Phone</a><a href="#q-mesh">Mesh</a>
+  <a href="#q-quality">Quality</a><a href="#q-process">How it was built</a><a href="#limits">Limits &amp; next</a><a href="#demo">Demo</a>
+</nav>
+
+<h2 id="pitch">The 30-second pitch</h2>
+<p class="pitch">You speak English into a cheap Android phone and hear <b>Hindi speech back</b>, typically within about
+  <b>1.1 s (p95)</b> of when you stop talking. The phone stays thin: it captures audio, uses <b>Silero VAD</b> to send only speech,
+  compresses it with <b>Opus</b> and streams it over a WebSocket. A gateway routes each session to a GPU worker that runs a streaming
+  <b>FastConformer</b> ASR, a <b>clause segmenter</b>, <b>IndicTrans2</b> translation and <b>Piper</b> Hindi TTS.
+  One RTX 3050 lab PC serves <b>210 concurrent users</b> at about <b>$0.002 per user-hour</b>. The app is <b>7.1 MB</b> and uses
+  <b>~64 MB</b> of memory while streaming.</p>
+<p><b>The one-line takeaway:</b> translate clause by clause instead of waiting for whole sentences, and keep every heavy model on one shared GPU so a 2 GB phone only has to listen and play.</p>
+
+<h2 id="arch">Architecture, step by step</h2>
+<ol class="flow">
+  <li><b>Phone</b> (Kotlin, foreground service): AudioRecord 16 kHz → <b>Silero VAD</b> gate with hangover and pre-roll → MediaCodec <b>Opus</b> ~16 kbit/s → OkHttp WebSocket. Hindi Opus comes back into a jitter buffer and AudioTrack.</li>
+  <li><b>Gateway</b> (Python asyncio): auth token, <b>admission control</b> at ≤85% predicted load, <b>sticky routing</b> to one worker, a <b>6 s replay buffer</b> and a resume token for dropped connections.</li>
+  <li><b>Workers dial out</b> to the gateway with an HMAC token, so a lab machine never has to open a port.</li>
+  <li><b>Streaming ASR</b>: FastConformer-114M, 160 ms chunks, cache-aware, greedy CTC, batched across all users on a slot arena (2.6 MB of state per stream). Silent chunks skip the encoder.</li>
+  <li><b>Clause segmenter</b> commits a clause on punctuation, a 0.4 s pause, an opener word or 12 words. The last word of a partial is never committed.</li>
+  <li><b>IndicTrans2</b> dist-200M translates each clause (int8 on CPU, or fp16 ONNX on the GPU with continuous batching).</li>
+  <li><b>Piper</b> Hindi TTS speaks it (CPU process pool, or a CPU front plus a TensorRT fp16 back on the GPU). Audio is Opus-encoded and streamed back.</li>
+  <li>An <b>EDF gate</b> holds MT and TTS GPU work whenever an ASR tick has the earlier deadline, so ASR stays real time on a shared card.</li>
+</ol>
+
+<h2 id="decisions">Key design decisions and why</h2>
+<div class="tablewrap"><table>
+  <tr><th>Decision</th><th>Why</th></tr>
+  <tr><td>Thin phone, models on a server</td><td>A 2 GB Go phone can't hold ASR + MT + TTS. Measured on-phone baseline was 2.1 s first audio. The phone only does VAD and Opus.</td></tr>
+  <tr><td>Translate by clause, not sentence</td><td>Long sentences would make you wait. Clauses start Hindi while you are still talking. Agreement with sentence-level translation is chrF++ 68.7 (E2).</td></tr>
+  <tr><td>VAD gate on the phone</td><td>Only ~45% of chunks are sent: 54 KB/min uplink, and the GPU skips silence. Cost: +0.48 pp WER, within the accepted +0.5 pp (G2).</td></tr>
+  <tr><td>Workers dial out to the gateway</td><td>University labs open no inbound ports. Dial-out also makes adding a node (the Windows laptop) a single command.</td></tr>
+  <tr><td>6 s replay buffer + resume token</td><td>If a worker dies, its sessions move to another node and replay the last 6 s, so no speech is lost (4/4 sessions resumed).</td></tr>
+  <tr><td>Move MT and TTS onto the GPU (M17–M18)</td><td>On CPU, TTS limited capacity to 80 users while the GPU was ≥71% idle. GPU MT cut MT p95 from 1.1 s to 0.09 s.</td></tr>
+  <tr><td>TensorRT for Piper's back half, CPU for its front</td><td>The front is ~2,400 tiny ops (faster on CPU). The vocoder back is 12× faster in TensorRT fp16. TTS went from ~50 to ~770 audio-s/s.</td></tr>
+  <tr><td>EDF gate, not CUDA stream priorities or MPS (M19)</td><td>Measured: priorities and MPS gave no gain, because running blocks can't be preempted. EDF beat FCFS by 6–8 ms tick p95.</td></tr>
+  <tr><td>fp16 + CUDA graphs on the ASR encoder (M21)</td><td>ASR became the limit at 160 users. Graphs plus fp16 cut a batch-64 step from 71.8 to 48.9 ms for +0.04 pp WER, raising capacity to 210.</td></tr>
+  <tr><td>Slot arena, not paged attention</td><td>FastConformer state is only 2.6 MB per stream, so copying is cheap. Paging was only ever measured on random weights, so it isn't claimed.</td></tr>
+  <tr><td>Privacy by design</td><td>Speech is never stored. Logs and metrics carry no text and no audio. Consent screen, adults only.</td></tr>
+</table></div>
+
+<h2 id="numbers">Numbers to have ready</h2>
+<div class="tablewrap"><table>
+  <tr><th>What</th><th>Measured</th></tr>
+  <tr><td>Speaker stops → Hindi starts, per turn (G1, target ≤2.0 s)</td><td>p50 <b>0.36 s</b>, p95 <b>1.14 s</b></td></tr>
+  <tr><td>Stage p95: ASR step / MT / TTS first piece</td><td>0.017 s / 0.084 s / 0.079 s. The largest stage is the clause commit wait (1.11 s)</td></tr>
+  <tr><td>Capacity on one RTX 3050 lab PC</td><td>80 users (TTS on CPU) → 160 (all on GPU) → <b>210</b> (fp16 + CUDA graphs)</td></tr>
+  <tr><td>1-hour soak at 160 users</td><td>29/29 windows pass, GPU memory flat</td></tr>
+  <tr><td>ASR word error rate (20 convs, 2,739 words)</td><td>ungated 4.05%, gated 4.53% (+0.48 pp, G2 pass)</td></tr>
+  <tr><td>Translation quality (FLORES-200 chrF++)</td><td>GPU fp16 52.48 clause / 58.05 sentence, same as CPU int8 (+0.13)</td></tr>
+  <tr><td>Node kill (G3)</td><td>4/4 sessions moved and resumed, first speech after the kill p50 2.1 s</td></tr>
+  <tr><td>Cost per user-hour</td><td>lab <b>$0.0021</b> at 160 users; cloud T4 estimate $0.0039 (spot $0.0017), unmeasured</td></tr>
+  <tr><td>Bandwidth per user</td><td>uplink 54 KB/min, downlink 99 KB/min</td></tr>
+  <tr><td>Android app (real phone, Samsung SM-E156B)</td><td>APK 35.3 → <b>7.1 MB</b>, installed 19 MB, PSS <b>63.7 MB</b> streaming in background (budget 250 MB)</td></tr>
+  <tr><td>Lean ONNX Runtime (VAD ops only)</td><td>libonnxruntime 33 → 12.3 MB; VAD output identical to full ORT on all 501 test chunks</td></tr>
+  <tr><td>Tests</td><td>73 fast + 8 slow pytest, Gradle unit tests; report regenerates from <code>results/</code> only (G4)</td></tr>
+</table></div>
+
+<h2>Likely questions, with short answers</h2>
+<div class="qa">
+<h3 id="q-latency">Latency</h3>
+<details><summary>How do you define “first audio”, and why is it under a second?</summary>
+  <p>From when the speaker stops to when Hindi starts playing, per turn. It is often under 0.5 s because earlier clauses were already
+  translated and spoken while the person was still talking. The p95 includes a fixed 0.29 s for the phone and network.</p></details>
+<details><summary>What is the slowest stage?</summary>
+  <p>Not a model. It is the <b>clause commit wait</b> (p95 1.11 s): the segmenter waits for the next word, a 0.4 s pause or the VAD's
+  end-of-speech before it commits a clause. All the models together take under 0.2 s.</p></details>
+<details><summary>Hindi is longer than English. Doesn't playback fall behind?</summary>
+  <p>Yes, in long monologues: Hindi audio is ~1.16× the English duration, so the last clause of a long turn can start ~7 s after
+  the speaker stops. A faster TTS rate (1.15) reduced it. In real conversation people take turns, which is what G1 measures.</p></details>
+
+<h3 id="q-gpu">GPU and scaling</h3>
+<details><summary>How did capacity go from 80 to 210 users on one GPU?</summary>
+  <p>Step by step, measuring each time: (1) MT to the GPU with continuous batching, (2) Piper's vocoder to TensorRT, (3) an EDF gate
+  so MT/TTS never delay an ASR tick, (4) fp16 + bucketed CUDA graphs for the ASR encoder. A hidden memory ceiling was fixed too:
+  PyTorch's allocator had reserved 5.4 GB for a 1.2 GB peak, solved with <code>expandable_segments</code>.</p></details>
+<details><summary>What limits it at 220 users?</summary>
+  <p>Not the GPU anymore. ASR still meets its deadline, but the main Python process uses ~2 cores and MT p95 grows. The next step
+  would be splitting the process or more GPUs.</p></details>
+<details><summary>How does admission control work?</summary>
+  <p>Each node reports per-stage load every 2 s. The gateway predicts load as the maximum of sessions/capacity and the busiest stage,
+  and refuses a new user above 85%, so existing users keep their latency instead of everyone getting slow.</p></details>
+<details><summary>Why EDF and not just GPU stream priorities?</summary>
+  <p>I measured priorities, MPS and separate processes: none helped, because the GPU can't preempt a running kernel. EDF decides
+  <i>before</i> launch, holding MT/TTS work whose deadline is later than the running ASR tick.</p></details>
+
+<h3 id="q-phone">The phone</h3>
+<details><summary>How did the app get to 7 MB and 64 MB of memory?</summary>
+  <p>R8 shrinking, arm64 only, no Compose/AppCompat, and a custom ONNX Runtime build containing only the VAD's operators. A gotcha: ORT's
+  optimiser adds ops (FusedConv, Split) at load time, so the op list must come from the optimised graph. Backgrounding the app frees
+  ~47 MB of window surfaces.</p></details>
+<details><summary>Has it run on a real 2 GB Go phone?</summary>
+  <p>Not yet. It ran on a real Samsung (Android 15) and on a 2 GB emulator (PSS 83 MB). A true Go device is an open item.</p></details>
+<details><summary>Why does the website work in a browser too?</summary>
+  <p>For the demo: the same server path is reachable from a browser page on GitHub Pages, which streams mic audio through a bridge
+  that runs the same Silero gate. Audio goes over an ngrok tunnel to the lab PC.</p></details>
+
+<h3 id="q-mesh">Mesh and reliability</h3>
+<details><summary>What happens if a worker crashes mid-sentence?</summary>
+  <p>The gateway sees the dropped link (0.05–0.10 s on a reset; pings catch a silent death in ≤10 s), moves every session on that node
+  to another node and replays the last 6 s of uplink audio. Tested with SIGKILL: 4/4 sessions resumed. Known gap: the user may hear up to
+  6 s of Hindi twice.</p></details>
+<details><summary>How do you add capacity?</summary>
+  <p>Start another worker anywhere with outbound internet: it dials the gateway and starts taking sessions. A Windows laptop node was
+  added this way with one PowerShell script.</p></details>
+
+<h3 id="q-quality">Quality</h3>
+<details><summary>Doesn't the VAD gate hurt recognition?</summary>
+  <p>Slightly: +0.48 pp WER (4.05 → 4.53%) over 2,739 words, because skipping silence shifts the encoder's cache. We accepted
+  ≤+0.5 pp in exchange for sending ~45% of the audio. The margin is thin, and I say so.</p></details>
+<details><summary>Does clause-by-clause translation lose quality?</summary>
+  <p>Some. Joined clause translations agree with sentence translations at chrF++ 68.7. On FLORES-200 clause mode scores 52.5 vs 58.1 for
+  sentences. There is no human Hindi reference for our speech, so that is agreement, not adequacy.</p></details>
+<details><summary>Did fp16 or the GPU change the translation?</summary>
+  <p>No measurable loss: GPU fp16 chrF++ is within +0.15 of CPU int8, with identical text on the probe sentences.</p></details>
+
+<h3 id="q-process">How it was built</h3>
+<details><summary>How did you use the AI coding assistant?</summary>
+  <p>Claude Code wrote and ran most of the code. I set the goals and made the key calls (the definition of first audio, the G2 criterion,
+  the capacity rule, slot arena vs paging, TensorRT vs CUDA EP). A fixed <code>SPEC.md</code>, a <code>PLAN.md</code> with one acceptance
+  test per milestone, an append-only <code>INSIGHTS.md</code> log and a short <code>STATUS.md</code> handoff kept it on track across sessions.
+  The full development transcript is published with the project.</p></details>
+<details><summary>What did you learn?</summary>
+  <p>Measure, don't assume: the GPU was 71% idle while I thought it was busy, stream priorities didn't help, and a failed hypothesis is a
+  result. And the report is generated from the CSVs, so no number can be typed in by hand.</p></details>
+</div>
+
+<h2 id="limits">Known limits and what's next</h2>
+<ul class="tight">
+  <li>Not yet tested on a real 2 GB Android Go phone, and radio energy use is unmeasured.</li>
+  <li>Piper Hindi voices are research-only (CC-BY-NC-SA or unverified); the commercial fallback is the Android system Hindi voice.</li>
+  <li>Capacity 210 is not soak-tested yet; the main process memory grows ~4.6 MB/min during a soak.</li>
+  <li>Cloud cost is extrapolated from the lab GPU. Next (M22): measure on L4/A10/A100.</li>
+  <li>Release signing uses a debug key; a real key is needed for a store release.</li>
+</ul>
+
+<h2 id="demo">Demo plan (about 10 min)</h2>
+<ol class="flow">
+  <li>Open the <a href="index.html">live page</a>, play a sample clip: Hindi starts within a second of the clip ending.</li>
+  <li>Speak into the mic: show the English and Hindi text appearing clause by clause.</li>
+  <li>Show the Android app on the phone: START, speak, Hindi plays; STOP is clean.</li>
+  <li>Kill a worker during a session: the session moves to the other node and continues.</li>
+  <li>Show the generated report: gates G1–G4 and the 80 → 160 → 210 capacity table.</li>
+</ol>
+
+<footer>VoiceMesh, a student project, 2026. <a href="index.html">Live demo</a> · <a href="transcript.html">Development transcript</a></footer>
+</div>
+</body></html>
