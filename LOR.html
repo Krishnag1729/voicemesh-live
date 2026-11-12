@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VoiceMesh Recommender Brief</title>
+<meta name="description" content="Project brief for Krishna Gupta's letter of recommendation: what VoiceMesh is, what was built and measured, latest research, limits, and facts a recommender can cite.">
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1c1c1a;--muted:#6b6a64;--line:#e3e1da;--accent:#c2410c;--code:#f0eee8}
+@media (prefers-color-scheme:dark){:root{--bg:#151514;--card:#1f1f1d;--ink:#ecebe6;--muted:#a09e96;--line:#33322e;--accent:#fb923c;--code:#191918}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Noto Sans Devanagari",sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:28px 16px 56px}
+a{color:var(--accent)}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+h1{font-size:1.7rem;margin:0;letter-spacing:-.01em}
+h2{font-size:1.25rem;margin:32px 0 10px;scroll-margin-top:12px}
+h3{font-size:1.05rem;margin:22px 0 6px;scroll-margin-top:12px}
+.tag{font-size:.8rem;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:2px 9px;vertical-align:middle}
+.muted{color:var(--muted)}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 12px;text-decoration:none;white-space:nowrap;color:var(--ink)}
+.btn:hover{border-color:var(--accent)}
+code{background:var(--code);border-radius:4px;padding:1px 5px;font:.88em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.toc{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 4px}
+.toc a{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 11px;font-size:14px;text-decoration:none;color:var(--ink)}
+.toc a:hover{border-color:var(--accent)}
+.pitch{background:var(--card);border-left:4px solid var(--accent);border-radius:0 12px 12px 0;padding:12px 16px;font-size:17px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{text-align:left;vertical-align:top;padding:8px 12px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.qa details{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:8px 0}
+.qa summary{cursor:pointer;font-weight:600}
+.qa details[open] summary{margin-bottom:6px}
+.qa p{margin:6px 0 0}
+ol.flow li,ul.tight li{margin:4px 0}
+footer{margin-top:40px;color:var(--muted);font-size:14px;text-align:center}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.stat b{display:block;font-size:1.45rem;color:var(--accent);line-height:1.2}
+.stat span{display:block;font-size:14px;color:var(--muted);margin-top:4px}
+@media print{.toc,nav{display:none}body{background:#fff}}
+</style>
+</head><body><div class="wrap">
+<header class="top">
+<div>
+<h1>VoiceMesh: project brief for my recommender <span class="tag">LOR</span></h1>
+<p class="muted" style="margin:6px 0 0">Krishna Gupta · Indian Institute of Science · for my application to the <b>CaCTüS internship</b> (Max Planck Institutes for Biological Cybernetics and Intelligent Systems, Tübingen)</p>
+</div>
+<nav style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="index.html">Live demo</a><a class="btn" href="interview_prep.html">Interview prep</a></nav>
+</header>
+
+<nav class="toc">
+<a href="#note">Note</a><a href="#glance">At a glance</a><a href="#what">What it is</a><a href="#built">What I built</a><a href="#new">What is different</a><a href="#method">How I worked</a><a href="#latest">Latest research</a><a href="#limits">Limits</a><a href="#cite">Facts to cite</a><a href="#yours">For you to judge</a>
+</nav>
+
+<h2 id="note">A note to my recommender</h2>
+<div class="pitch">Thank you for agreeing to consider a letter. This page collects what I designed, built and measured in VoiceMesh, so that every claim can be checked. Every number comes from the project's own benchmark files (<code>results/*.csv</code>) or its generated report. Where a result has only been measured on a benchmark and not yet on the real server, I say so.</div>
+<p class="muted">The source repository (<code>github.com/Krishnag1729/Voicemesh</code>) is private. I can give you access at any time. The live demo and the full development transcript are public.</p>
+
+<h2 id="glance">At a glance</h2>
+<div class="stats">
+<div class="stat"><b>1.14 s</b><span>p95 from speaker stops to Hindi starts (target ≤2.0 s)</span></div>
+<div class="stat"><b>210 users</b><span>at once on one RTX 3050 lab GPU (320 in later benchmarks)</span></div>
+<div class="stat"><b>7.1 MB</b><span>Android app, about 64 MB of memory while streaming</span></div>
+<div class="stat"><b>4/4</b><span>sessions resumed after a worker was killed mid-speech</span></div>
+<div class="stat"><b>$0.0021</b><span>per user-hour on the lab PC (measured power, assumed prices)</span></div>
+<div class="stat"><b>148</b><span>dated findings logged, negative results included</span></div>
+</div>
+
+<h2 id="what">What VoiceMesh is</h2>
+<p>You speak English into a cheap Android phone and hear Hindi speech back, usually within about a second of when you stop talking. The phone stays thin: it captures audio, sends only speech (an on-phone voice detector), compresses it and streams it. A server runs streaming speech recognition, translates clause by clause and speaks the Hindi, all on one shared consumer GPU. The aim was a design that a 2 GB phone and a single lab PC could sustain for hundreds of people.</p>
+<p class="muted">Timeline: October–November 2026. It grew out of my earlier GPU streaming-ASR engine (<code>GPU_Engine_ASR</code>).</p>
+
+<h2 id="built">What I designed and built</h2>
+<ul class="tight">
+<li><b>Android client</b> (Kotlin): Silero voice detection with hangover and pre-roll, Opus at ~16 kbit/s, WebSocket, jitter buffer. Shrunk from 35.3 to 7.1 MB using a custom ONNX Runtime build that contains only the detector's operators.</li>
+<li><b>Gateway</b> (Python asyncio): authentication, admission control at ≤85% predicted load, sticky routing, a 6 s replay buffer and resume tokens, so a worker crash doesn't lose speech.</li>
+<li><b>GPU worker</b>: cache-aware streaming FastConformer ASR batched across all users, a clause segmenter, IndicTrans2 translation with continuous batching, and Piper Hindi TTS with a TensorRT vocoder.</li>
+<li><b>A deadline (EDF) GPU gate</b>: translation and speech work waits whenever a speech-recognition tick has the earlier deadline, so recognition stays real time on a shared card.</li>
+<li><b>Measurement harness</b>: load generator, one-hour soak, accuracy and cost benchmarks, and a report generated only from the result files, so no number is typed by hand.</li>
+</ul>
+
+<h2 id="new">What is different from existing systems</h2>
+<p class="muted">Each is a design choice backed by a measurement. I don't claim any single component is new; the contribution is the combination and its measured trade-offs.</p>
+<div class="tablewrap"><table>
+<tr><th>Choice</th><th>Why it matters</th><th>Evidence</th></tr>
+<tr><td>Translate by clause, not by sentence</td><td>Hindi starts while the speaker is still talking</td><td>Agreement with sentence-level translation chrF++ 68.7</td></tr>
+<tr><td>Speech-only uplink from the phone</td><td>Less data, and the GPU skips silence</td><td>~45% of audio sent; recognition error +0.48 points, within the agreed +0.5</td></tr>
+<tr><td>All three models share one consumer GPU</td><td>One lab PC serves many users cheaply</td><td>Capacity 80 → 160 → 210 users, each step measured</td></tr>
+<tr><td>Deadline scheduling instead of GPU priorities</td><td>A GPU can't preempt a running kernel; deciding before launch works</td><td>Stream priorities and MPS gave no gain; EDF beat FCFS by 6–8 ms tick p95</td></tr>
+<tr><td>Workers dial out to the gateway</td><td>Campus labs open no inbound ports; adding a node is one command</td><td>A Windows laptop joined as a second node</td></tr>
+</table></div>
+
+<h2 id="method">How I worked</h2>
+<ul class="tight">
+<li><b>Hypothesis, then measurement.</b> Each milestone had one acceptance test written before the work (M0–M21). A failed hypothesis was recorded as a result. For example, I assumed the GPU was busy, but it was 71% idle, so the plan changed.</li>
+<li><b>Gates fixed in advance.</b> First audio ≤2.0 s p95, recognition-error change ≤0.2–0.5 points, and capacity counted only when every smaller user count also passed.</li>
+<li><b>Honest statistics.</b> Bootstrap confidence intervals for accuracy differences, repeated runs with different seeds, and soak tests rather than single short runs.</li>
+<li><b>Negative results kept.</b> The project log has 148 dated findings, including ideas that failed and corrections to my own earlier conclusions.</li>
+<li><b>AI-assisted development, disclosed.</b> An AI coding assistant (Claude Code) wrote and ran most of the code. I set the goals, chose the metrics and acceptance criteria, and made the design calls. The full development transcript is <a href="transcript.html">published</a>.</li>
+</ul>
+
+<h2 id="latest">Latest research, November 2026</h2>
+<p class="muted">Benchmark results on the same RTX 3050. These have not been through the real server yet and are not in the official report.</p>
+<div class="tablewrap"><table>
+<tr><th>Question</th><th>Finding</th></tr>
+<tr><td>How many users fit under 2 s?</td><td><b>320</b> (up from 210), three runs at 1.54–1.87 s, by compiling the recognition encoder with TensorRT and shortening its attention context from 70 to 40 frames</td></tr>
+<tr><td>And under 4 s?</td><td><b>340</b> held for a one-hour soak on a quiet machine; 360 is the ceiling and 380 fails</td></tr>
+<tr><td>What does the shorter context cost?</td><td>Nothing measurable on LibriSpeech (5.19 → 5.10%), but +0.68 points on Indian-accented speech (95% CI 0.15–1.20)</td></tr>
+<tr><td>Would Whisper be better?</td><td>Much more accurate on Indian accents (6.9% vs 22.7–26.2% word error on Svarah), but each live update takes 0.6–0.8 s on this GPU, so it can't serve many users. Fine-tuning the streaming model on Indian speech is the next step.</td></tr>
+<tr><td>What else did I find?</td><td>Main-process memory grows steadily in native code (~9 MB/min at 340 users), and other users' CPU jobs on a shared machine collapse latency. Both are open.</td></tr>
+<tr><td>What didn't work?</td><td>TensorRT for the translation decoder (slower), translation pacing, larger batches, more speech workers, a slot-style translation cache, a separate GPU process and translation priority</td></tr>
+</table></div>
+
+<h2 id="limits">Known limits</h2>
+<ul class="tight">
+<li>Not yet tested on a real 2 GB Android Go phone, and radio energy use is unmeasured.</li>
+<li>Recognition accuracy on Indian-accented English is the largest open risk (above).</li>
+<li>Piper Hindi voices are research-only licences; a store release would use the system Hindi voice.</li>
+<li>Cloud cost is extrapolated from the lab GPU, not measured on cloud hardware.</li>
+</ul>
+
+<h2 id="cite">Facts you can cite</h2>
+<div class="tablewrap"><table>
+<tr><th>Claim</th><th>Where it is checked</th></tr>
+<tr><td>p95 first audio 1.14 s (p50 0.36 s), target ≤2.0 s</td><td>Generated report, gate G1</td></tr>
+<tr><td>210 concurrent users on one RTX 3050; one-hour soak at 160 users, 29/29 windows pass</td><td>Generated report, capacity section</td></tr>
+<tr><td>Recognition error 4.05% ungated, 4.53% with the speech gate (2,739 words)</td><td>Generated report, gate G2</td></tr>
+<tr><td>Translation on GPU fp16 equals CPU int8 quality (FLORES-200 chrF++ +0.13)</td><td>Benchmark results</td></tr>
+<tr><td>4/4 sessions resumed after killing a worker</td><td>Generated report, gate G3</td></tr>
+<tr><td>Android app 7.1 MB, 63.7 MB memory streaming on a real phone</td><td>Phone measurements</td></tr>
+<tr><td>320 users under 2 s, 340 under 4 s (benchmark only)</td><td>November research summary</td></tr>
+</table></div>
+
+<h2 id="yours">For you to judge</h2>
+<p>These are things only you can speak to, so I have left them to you:</p>
+<ul class="tight">
+<li>How long and in what capacity you have known me.</li>
+<li>How independently I worked, and how I responded to feedback and to results that went against my expectations.</li>
+<li>How I compare with other students you have taught or supervised.</li>
+<li>Whether I am ready for a research internship in computation and cognition.</li>
+</ul>
+<p class="muted">If anything here is unclear or you would like to see the code, a demo or the raw results, I am glad to show you.</p>
+
+<footer>VoiceMesh, a student project, 2026. <a href="index.html">Live demo</a> · <a href="interview_prep.html">Interview prep</a> · <a href="transcript.html">Development transcript</a></footer>
+</div></body></html>
